@@ -58,8 +58,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/kristofferR/SpatialAudioBridge",
       "state" : {
-        "revision" : "18f8779f7d80073e5a67347020177fab5e24ec8b",
-        "version" : "1.5.0"
+        "revision" : "05a9f3b4947ee7235c29039b80b3f24e03b2f860",
+        "version" : "1.5.1"
       }
     },
     {
