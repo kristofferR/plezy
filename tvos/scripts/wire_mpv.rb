@@ -28,7 +28,7 @@ sources = [
   { name: 'MpvPipController.swift',    path: '../ios/Runner/MpvPlayer/MpvPipController.swift', tree: '<source_root>' },
   { name: 'MpvAudioPlayerCore.swift', path: '../shared/apple/MpvPlayer/MpvAudioPlayerCore.swift', tree: '<source_root>' },
   { name: 'MpvAudioPlayerPlugin.swift', path: '../shared/apple/MpvPlayer/MpvAudioPlayerPlugin.swift', tree: '<source_root>' },
-  { name: 'SpatialAudioSink.swift',    path: 'Runner/MpvPlayer/SpatialAudioSink.swift', tree: '<source_root>' },
+  { name: 'SpatialAudioSink.swift',    path: '../ios/Runner/MpvPlayer/SpatialAudioSink.swift', tree: '<source_root>' },
 ]
 
 sources_phase = runner_target.source_build_phase
