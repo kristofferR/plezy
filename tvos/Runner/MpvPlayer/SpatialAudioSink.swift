@@ -91,7 +91,11 @@
         do {
           try AtmosOutputActivator.configureAudioSession()
         } catch {
-          MpvLog.error("[SpatialAudioSink] Audio session: \(error)")
+          MpvLog.error("[SpatialAudioSink] Falling back to PCM: \(error)")
+          self?.state.withLock { state in
+            if state.renderer === renderer { state.failed = true }
+          }
+          return
         }
         let activator = AtmosOutputActivator()
         activator.attach(to: synchronizer)
