@@ -28,6 +28,7 @@
       var failed = false
       /// mpv's software volume, which never reaches the bitstream.
       var volume: Float = 1
+      var volumeUpdate: Task<Void, Never>?
     }
 
     private struct Timeline {
@@ -132,14 +133,16 @@
 
     /// mpv's volume and mute as one gain; the renderer clamps it to 1.
     private func setVolume(_ volume: Float) {
-      guard let renderer = state.withLock({ state in
+      state.withLock { state in
         state.volume = volume
-        return state.renderer
-      }) else { return }
-      // Tasks may run out of order; each applies the latest volume.
-      Task { [weak self] in
-        guard let volume = self?.state.withLock({ $0.volume }) else { return }
-        await renderer.setVolume(volume)
+        guard let renderer = state.renderer else { return }
+        // Each update waits for the previous one, so the latest volume lands last.
+        let previous = state.volumeUpdate
+        state.volumeUpdate = Task { [weak self] in
+          await previous?.value
+          guard let volume = self?.state.withLock({ $0.volume }) else { return }
+          await renderer.setVolume(volume)
+        }
       }
     }
 
