@@ -23,10 +23,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-      - name: Check workflow and native package locks
+      - name: Check workflow
         run: |
           go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 .github/workflows/build.yml
-          python3 scripts/checks/check_apple_spm_locks.py
           git diff --check
 
   archives:
@@ -51,6 +50,8 @@ jobs:
           pub-cache: false
       - name: Install locked Dart dependencies
         run: flutter pub get --enforce-lockfile --no-example
+      - name: Check native package locks
+        run: python3 scripts/checks/check_apple_spm_locks.py
       - name: Prepare iOS
         run: |
           shasum -a 256 ios/Podfile.lock > "$RUNNER_TEMP/ios-pods.sha256"
