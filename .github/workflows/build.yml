@@ -57,6 +57,9 @@ jobs:
           pub-cache: false
       - name: Install locked Dart dependencies
         run: flutter pub get --enforce-lockfile --no-example
+      - name: Install wakelock_plus development dependencies
+        working-directory: packages/wakelock_plus
+        run: flutter pub get --enforce-lockfile --no-example
       - name: Check generated code, translation hygiene and native locks
         run: |
           scripts/codegen.sh --check
