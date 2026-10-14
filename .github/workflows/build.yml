@@ -11,6 +11,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
+  APP_CANDIDATE: "4e422c3e1a66e1bd39a261fe97620ed418b3f5e6"
   FLUTTER_VERSION: "3.47.1"
   CODE_SIGNING_ALLOWED: "NO"
   COCOAPODS_DISABLE_STATS: "true"
@@ -22,11 +23,57 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          fetch-depth: 0
           persist-credentials: false
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.25"
+          cache: false
       - name: Check workflow
         run: |
           go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 .github/workflows/build.yml
           git diff --check
+      - name: Check exact app tree and retained upstream native assets
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+          from pathlib import Path
+          changes = subprocess.check_output(['git', 'diff', '--name-only', os.environ['APP_CANDIDATE'], 'HEAD']).decode().splitlines()
+          assert changes == ['.github/workflows/build.yml'], changes
+          upstream = json.loads(subprocess.check_output(['git', 'show', '0c2e3ec75e3bb9f2fd7e8de9af0013ea92842608:mpv-build.lock.json']))
+          lock = json.loads(Path('mpv-build.lock.json').read_text())
+          assert lock['artifacts'] == upstream['artifacts']
+          assert lock['commit'] == 'ddfc1a3f4581f8855eba4aacbe3724d06b57ee34'
+          assert lock['repo'] == 'kristofferR/mpv-build'
+          print('Exact app candidate verified; upstream Android/Linux/Windows asset maps unchanged')
+          PY
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: false
+          pub-cache: false
+      - name: Install locked Dart dependencies
+        run: flutter pub get --enforce-lockfile --no-example
+      - name: Check generated code, translation hygiene and native locks
+        run: |
+          scripts/codegen.sh --check
+          python3 scripts/checks/clean_translations.py --check --strict
+          python3 scripts/checks/check_apple_spm_locks.py
+      - name: Check changed Dart formatting and analyzer
+        run: |
+          dart format --output=none --set-exit-if-changed lib/widgets/video_controls/sheets/video_settings_sheet.dart
+          dart run scripts/checks/check_analyzer.dart
+      - name: Test player, normalization settings and platform behavior
+        run: |
+          scripts/run_tests.sh \
+            test/mpv/player_native_bridge_test.dart \
+            test/mpv/player_open_test.dart \
+            test/widgets/video_settings_sheet_test.dart \
+            test/screens/settings/playback_settings_screen_test.dart \
+            test/utils/platform_detector_test.dart
 
   archives:
     needs: checks
