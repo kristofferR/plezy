@@ -1,0 +1,120 @@
+name: SpatialAudioBridge validation
+
+# Fork-only: runs on pushes to validation branches, never on main or a PR branch.
+on:
+  push:
+    branches:
+      - 'validation/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sab-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FLUTTER_VERSION: "3.47.1"
+  CODE_SIGNING_ALLOWED: "NO"
+  COCOAPODS_DISABLE_STATS: "true"
+
+jobs:
+  checks:
+    if: github.repository == 'kristofferR/plezy'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: false
+          pub-cache: false
+      - name: Install locked Dart dependencies
+        run: flutter pub get --enforce-lockfile --no-example
+      - name: Install wakelock_plus development dependencies
+        working-directory: packages/wakelock_plus
+        run: flutter pub get --enforce-lockfile --no-example
+      - name: Check generated code, translation hygiene and native locks
+        run: |
+          scripts/codegen.sh --check
+          python3 scripts/checks/clean_translations.py --check --strict
+          python3 scripts/checks/check_apple_spm_locks.py
+      - name: Check changed Dart formatting and analyzer
+        run: |
+          dart format --output=none --set-exit-if-changed lib/mpv/player/player_native.dart lib/main.dart test/mpv/player_native_bridge_test.dart
+          dart run scripts/checks/check_analyzer.dart
+      - name: Test player, normalization settings and platform behavior
+        run: |
+          scripts/run_tests.sh \
+            test/mpv/player_native_bridge_test.dart \
+            test/mpv/player_open_test.dart \
+            test/services/music/music_playback_service_test.dart \
+            test/widgets/video_settings_sheet_test.dart \
+            test/screens/settings/playback_settings_screen_test.dart \
+            test/utils/platform_detector_test.dart
+
+  archives:
+    needs: checks
+    if: github.repository == 'kristofferR/plezy'
+    runs-on: macos-26
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Select and report Xcode 26.6
+        run: |
+          sudo xcode-select -s /Applications/Xcode_26.6.app/Contents/Developer
+          xcodebuild -version
+          xcrun swiftc -version
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: false
+          pub-cache: false
+      - name: Install locked Dart dependencies
+        run: flutter pub get --enforce-lockfile --no-example
+      - name: Check native package locks
+        run: python3 scripts/checks/check_apple_spm_locks.py
+      - name: Prepare tvOS and check project wiring
+        run: |
+          tvos/scripts/fetch_engine.sh
+          tvos/scripts/pod_install.sh
+          ruby tvos/scripts/test_wire_mpv.rb
+          ruby tvos/scripts/test_wire_top_shelf.rb
+      - name: Archive tvOS unsigned
+        run: |
+          set -o pipefail
+          df -h /
+          xcodebuild archive \
+            -workspace tvos/Runner.xcworkspace -scheme Runner -configuration Release \
+            -destination 'generic/platform=tvOS' \
+            -archivePath "$RUNNER_TEMP/tvos.xcarchive" \
+            -derivedDataPath "$RUNNER_TEMP/tvos-derived" \
+            -disableAutomaticPackageResolution \
+            CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO \
+            2>&1 | tee "$RUNNER_TEMP/tvos-archive.log"
+          ditto -c -k --sequesterRsrc --keepParent "$RUNNER_TEMP/tvos.xcarchive" "$RUNNER_TEMP/tvos.xcarchive.zip"
+      - name: Retain unsigned tvOS archive for receiver test
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: unsigned-tvos-archive
+          path: ${{ runner.temp }}/tvos.xcarchive.zip
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+      - name: Retain archive logs
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: archive-logs
+          path: ${{ runner.temp }}/*-archive.log
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Remove remaining archive and build outputs
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/tvos.xcarchive" "$RUNNER_TEMP/tvos.xcarchive.zip" "$RUNNER_TEMP/tvos-derived" build/tvos
